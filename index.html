@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UTEP SHPE | Student Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .bg-utep-blue { background-color: #041E42; }
+        .text-utep-blue { color: #041E42; }
+        .bg-utep-orange { background-color: #FF8200; }
+        .text-utep-orange { color: #FF8200; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .glass-nav { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-top: 1px solid #e5e7eb; }
+        .loader { border: 3px solid #f3f3f3; border-radius: 50%; border-top: 3px solid #FF8200; width: 24px; height: 24px; -webkit-animation: spin 1s linear infinite; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .auth-input { @apply w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:border-utep-orange transition-colors mb-3; }
+        .admin-card { @apply bg-white p-4 rounded-xl shadow-sm border border-gray-100; }
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: { colors: { utep: { blue: '#041E42', orange: '#FF8200', gray: '#B1B3B3' } } }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50 text-gray-800 h-screen flex flex-col overflow-hidden">
+
+    <!-- Top Header (Hidden on Auth) -->
+    <header id="app-header" class="bg-utep-blue text-white shadow-md z-20 hidden">
+        <div class="max-w-md mx-auto px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <div class="w-8 h-8 bg-utep-orange rounded-full flex items-center justify-center font-bold text-utep-blue">S</div>
+                <h1 class="font-bold text-lg tracking-wide">UTEP <span class="text-utep-orange">SHPE</span></h1>
+            </div>
+            <div class="relative flex items-center gap-3">
+                <div id="auth-status" class="text-xs text-blue-300"></div>
+                <button onclick="toggleNotifications()" class="p-2 relative">
+                    <i class="fas fa-bell"></i>
+                    <span id="notif-badge" class="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-utep-blue hidden"></span>
+                </button>
+                <div id="notif-dropdown" class="absolute right-0 top-full mt-2 w-64 bg-white text-gray-800 rounded-lg shadow-xl border border-gray-100 hidden transform transition-all duration-200 origin-top-right z-50">
+                    <div class="p-3 border-b text-xs font-semibold text-gray-400">NOTIFICATIONS</div>
+                    <div class="max-h-60 overflow-y-auto" id="notif-list"></div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main id="main-container" class="flex-1 overflow-y-auto hide-scrollbar pb-24 max-w-md mx-auto w-full bg-gray-50 relative">
+        <!-- Initial Loading State -->
+        <div class="flex flex-col items-center justify-center h-full space-y-4 px-6 text-center">
+            <div class="loader" id="loading-spinner"></div>
+            <p class="text-sm text-gray-500" id="loading-text">Connecting to Miners Network...</p>
+            <div id="error-box" class="hidden bg-red-50 border border-red-200 text-red-700 p-4 rounded-lg text-sm text-left w-full max-w-xs mx-auto"></div>
+            <!-- Emergency Sign Out -->
+            <button onclick="app.handleSignOut()" class="text-xs text-red-400 underline mt-4 hover:text-red-600">Stuck? Sign Out</button>
+        </div>
+    </main>
+
+    <!-- Bottom Navigation (Hidden on Auth) -->
+    <nav id="app-nav" class="fixed bottom-0 w-full glass-nav z-30 max-w-md left-1/2 transform -translate-x-1/2 hidden">
+        <div class="flex justify-around items-center h-16">
+            <button onclick="app.navigate('home')" class="nav-btn flex flex-col items-center justify-center w-full h-full text-utep-blue active" data-target="home">
+                <i class="fas fa-home text-xl mb-1"></i>
+                <span class="text-[10px] font-medium">Home</span>
+            </button>
+            <button onclick="app.navigate('events')" class="nav-btn flex flex-col items-center justify-center w-full h-full text-gray-400 hover:text-utep-blue transition-colors" data-target="events">
+                <i class="fas fa-calendar-alt text-xl mb-1"></i>
+                <span class="text-[10px] font-medium">Events</span>
+            </button>
+            <button onclick="app.navigate('leaderboard')" class="nav-btn flex flex-col items-center justify-center w-full h-full text-gray-400 hover:text-utep-blue transition-colors" data-target="leaderboard">
+                <i class="fas fa-trophy text-xl mb-1"></i>
+                <span class="text-[10px] font-medium">Points</span>
+            </button>
+            <!-- Admin Button (Hidden by default) -->
+            <button id="nav-admin-btn" onclick="app.navigate('admin')" class="nav-btn flex flex-col items-center justify-center w-full h-full text-gray-400 hover:text-utep-blue transition-colors hidden" data-target="admin">
+                <i class="fas fa-shield-alt text-xl mb-1"></i>
+                <span class="text-[10px] font-medium">Admin</span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Floating Action Button -->
+    <button id="scan-fab" onclick="toggleScanner()" class="fixed bottom-20 right-4 bg-utep-orange text-white p-4 rounded-full shadow-lg hover:bg-orange-600 transition-all z-40 transform hover:scale-105 active:scale-95 hidden">
+        <i class="fas fa-qrcode text-xl"></i>
+    </button>
+
+    <!-- Scanner Modal -->
+    <div id="scanner-modal" class="fixed inset-0 bg-black bg-opacity-90 z-50 hidden flex flex-col items-center justify-center p-4">
+        <div class="bg-white w-full max-w-sm rounded-2xl p-6 text-center">
+            <div class="mb-4">
+                <i class="fas fa-camera text-4xl text-utep-blue mb-2"></i>
+                <h2 class="text-xl font-bold text-utep-blue">Check-in</h2>
+                <p class="text-gray-500 text-sm">Enter code (e.g., GBM1)</p>
+            </div>
+            <input type="text" id="event-code-input" placeholder="CODE" class="w-full border-2 border-gray-200 rounded-lg p-3 text-center text-lg tracking-widest uppercase mb-4 focus:outline-none focus:border-utep-orange transition-colors">
+            <button onclick="app.submitCode()" class="w-full bg-utep-blue text-white py-3 rounded-lg font-bold shadow-md hover:bg-blue-900 transition-colors">Submit Code</button>
+            <button onclick="toggleScanner()" class="mt-4 text-gray-500 text-sm hover:text-gray-800">Cancel</button>
+        </div>
+    </div>
+
+    <!-- Firebase & App Logic -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, onSnapshot, query, where, increment, arrayUnion, addDoc, orderBy, limit, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDtTw7tkJjgh3id4jMVAKwRU1OxXjC66qY",
+            authDomain: "shpedemodraftapp.firebaseapp.com",
+            projectId: "shpedemodraftapp",
+            storageBucket: "shpedemodraftapp.firebasestorage.app",
+            messagingSenderId: "935989704959",
+            appId: "1:935989704959:web:b2538d47e4a43d463974ca"
+        };
+
+        const firebaseApp = initializeApp(firebaseConfig);
+        const auth = getAuth(firebaseApp);
+        const db = getFirestore(firebaseApp);
+
+        // --- STATE MANAGEMENT ---
+        const state = {
+            user: null, // Auth Object
+            profile: null, // Firestore Doc Data
+            events: [],
+            leaderboard: [],
+            resources: [],
+            allMembers: [], // For admin view
+            currentView: 'auth',
+            isOfficer: false
+        };
+
+        const showError = (msg) => {
+            const errorBox = document.getElementById('error-box');
+            if(errorBox) {
+                errorBox.innerHTML = `<strong>Error:</strong><br>${msg}`;
+                errorBox.classList.remove('hidden');
+                // Auto-hide after 5s
+                setTimeout(() => { if(errorBox) errorBox.classList.add('hidden'); }, 8000);
+            }
+            console.error(msg);
+        };
+
+        // --- CORE APPLICATION ---
+        const App = {
+            init: async () => {
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        state.user = user;
+                        // Show loader while fetching profile
+                        await App.loadUserProfile(user.uid);
+                    } else {
+                        state.user = null;
+                        state.profile = null;
+                        state.isOfficer = false;
+                        App.navigate('auth');
+                        document.getElementById('app-header').classList.add('hidden');
+                        document.getElementById('app-nav').classList.add('hidden');
+                        document.getElementById('scan-fab').classList.add('hidden');
+                    }
+                });
+            },
+
+            loadUserProfile: async (uid) => {
+                const userRef = doc(db, 'users', uid);
+                // Listen to profile changes
+                onSnapshot(userRef, async (docSnap) => {
+                    if (docSnap.exists()) {
+                        state.profile = docSnap.data();
+                        state.isOfficer = state.profile.role === 'Officer';
+                        
+                        // Setup UI for logged in user
+                        document.getElementById('app-header').classList.remove('hidden');
+                        document.getElementById('app-nav').classList.remove('hidden');
+                        
+                        // Officer Specific
+                        if(state.isOfficer) {
+                            document.getElementById('nav-admin-btn').classList.remove('hidden');
+                            document.getElementById('scan-fab').classList.add('hidden'); 
+                            App.loadAdminData();
+                        } else {
+                            document.getElementById('nav-admin-btn').classList.add('hidden');
+                            document.getElementById('scan-fab').classList.remove('hidden');
+                        }
+
+                        if(state.currentView === 'auth') App.navigate('home');
+                        App.setupRealtimeListeners();
+                        App.seedDatabase(); // Check/Seed data once profile is loaded
+                        App.render();
+                    } else {
+                        // SELF HEALING with DELAY:
+                        // If profile is missing, wait 2s to see if handleSignup creates it.
+                        // If still missing, create a default one.
+                        console.warn("Profile missing. Waiting...");
+                        setTimeout(async () => {
+                            const doubleCheck = await getDoc(userRef);
+                            if(!doubleCheck.exists()) {
+                                console.log("Creating default profile (Self-Healing)...");
+                                await setDoc(userRef, {
+                                    name: state.user.displayName || "Miner Member",
+                                    role: "Member",
+                                    points: 0,
+                                    status: "Active",
+                                    checkedInEvents: [],
+                                    email: state.user.email || "",
+                                    createdAt: new Date().toISOString()
+                                }).catch(err => showError("DB Write Failed: " + err.code));
+                            }
+                        }, 2000);
+                    }
+                }, (error) => showError("Connection Lost: " + error.message));
+            },
+
+            loadAdminData: () => {
+                const qUsers = query(collection(db, 'users'));
+                onSnapshot(qUsers, (snapshot) => {
+                    state.allMembers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    if(state.currentView === 'admin') App.render();
+                });
+            },
+
+            setupRealtimeListeners: () => {
+                const qEvents = query(collection(db, 'events'));
+                onSnapshot(qEvents, (snapshot) => {
+                    state.events = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    if(['home', 'events', 'admin'].includes(state.currentView)) App.render();
+                });
+
+                const qLeaderboard = query(collection(db, 'users'), orderBy('points', 'desc'), limit(10));
+                onSnapshot(qLeaderboard, (snapshot) => {
+                    state.leaderboard = snapshot.docs.map(doc => doc.data());
+                    if(['home', 'leaderboard'].includes(state.currentView)) App.render();
+                });
+
+                const qResources = query(collection(db, 'resources'));
+                onSnapshot(qResources, (snapshot) => {
+                    state.resources = snapshot.docs.map(doc => doc.data());
+                    if(state.currentView === 'resources') App.render();
+                });
+            },
+
+            navigate: (view) => {
+                state.currentView = view;
+                document.querySelectorAll('.nav-btn').forEach(btn => {
+                    btn.classList.remove('text-utep-blue', 'active');
+                    btn.classList.add('text-gray-400');
+                });
+                const activeBtn = document.querySelector(`button[data-target="${view}"]`);
+                if(activeBtn) {
+                    activeBtn.classList.remove('text-gray-400');
+                    activeBtn.classList.add('text-utep-blue', 'active');
+                }
+                App.render();
+            },
+
+            render: () => {
+                const container = document.getElementById('main-container');
+                if (!container) return;
+
+                if (state.currentView === 'auth') renderAuth(container);
+                else if (state.currentView === 'home') renderHome(container);
+                else if (state.currentView === 'events') renderEvents(container);
+                else if (state.currentView === 'leaderboard') renderLeaderboard(container);
+                else if (state.currentView === 'admin') renderAdmin(container);
+                else if (state.currentView === 'resources') renderResources(container);
+            },
+
+            // --- ACTIONS ---
+
+            handleLogin: async (email, pass) => {
+                const btn = document.getElementById('btn-login');
+                const errBox = document.getElementById('login-error');
+                if(errBox) errBox.classList.add('hidden');
+                
+                try {
+                    if(btn) { btn.disabled = true; btn.innerText = "Signing in..."; }
+                    await signInWithEmailAndPassword(auth, email, pass);
+                } catch (e) {
+                    if(errBox) {
+                        let msg = "Error: " + e.code.replace('auth/', '');
+                        if(e.code === 'auth/operation-not-allowed') {
+                            msg = "Sign-in method disabled. Enable Email/Password in Firebase Console.";
+                        }
+                        errBox.innerText = msg;
+                        errBox.classList.remove('hidden');
+                    } else {
+                        alert("Login Failed: " + e.message);
+                    }
+                    if(btn) { btn.disabled = false; btn.innerText = "Login"; }
+                }
+            },
+
+            handleSignup: async (email, pass, name, officerCode) => {
+                try {
+                    const res = await createUserWithEmailAndPassword(auth, email, pass);
+                    const role = officerCode === "GOOP" ? "Officer" : "Member";
+                    
+                    // Profile creation
+                    await setDoc(doc(db, 'users', res.user.uid), {
+                        name: name,
+                        role: role,
+                        points: 0,
+                        status: "Active",
+                        checkedInEvents: [],
+                        email: email,
+                        createdAt: new Date().toISOString()
+                    });
+                    
+                    // Trigger seeding if needed
+                    App.seedDatabase(); 
+                } catch (e) {
+                    const btn = document.getElementById('btn-signup');
+                    const errBox = document.getElementById('signup-error');
+                    
+                    if(errBox) {
+                        let msg = "Error: " + e.code.replace('auth/', '');
+                        if(e.code === 'auth/operation-not-allowed') {
+                            msg = "Sign-in method disabled. Enable Email/Password in Firebase Console.";
+                        }
+                        errBox.innerText = msg;
+                        errBox.classList.remove('hidden');
+                    } else {
+                        alert("Signup Failed: " + e.message);
+                    }
+                    
+                    if(btn) { btn.disabled = false; btn.innerText = "Sign Up"; }
+                    throw e; // Re-throw to stop callers
+                }
+            },
+
+            handleSignOut: () => {
+                // Force reset state
+                state.user = null;
+                state.profile = null;
+                signOut(auth);
+                // Force reload page to clear any stuck listeners
+                if(document.getElementById('loading-spinner')) {
+                     window.location.reload();
+                }
+            },
+
+            createEvent: async () => {
+                const title = document.getElementById('new-event-title').value;
+                const date = document.getElementById('new-event-date').value;
+                const time = document.getElementById('new-event-time').value;
+                const code = document.getElementById('new-event-code').value.toUpperCase();
+                const points = parseInt(document.getElementById('new-event-points').value);
+                const type = document.getElementById('new-event-type').value;
+
+                if(!title || !date || !code) return alert("Please fill required fields");
+
+                try {
+                    await addDoc(collection(db, 'events'), {
+                        title, date, time, loc: "TBD", type, points, code
+                    });
+                    alert("Event Created Successfully!");
+                    document.getElementById('new-event-title').value = '';
+                    document.getElementById('new-event-code').value = '';
+                } catch(e) {
+                    alert("Error: " + e.message);
+                }
+            },
+
+            deleteEvent: async (id) => {
+                if(confirm("Delete this event?")) {
+                    await deleteDoc(doc(db, 'events', id));
+                }
+            },
+
+            manualAddPoints: async (userId) => {
+                const pts = prompt("How many points to add?", "10");
+                if(pts && !isNaN(pts)) {
+                    await updateDoc(doc(db, 'users', userId), {
+                        points: increment(parseInt(pts))
+                    });
+                    alert("Points added.");
+                }
+            },
+
+            submitCode: async () => {
+                const codeInput = document.getElementById('event-code-input');
+                const code = codeInput.value.toUpperCase().trim();
+                if (!code) return;
+
+                const eventQuery = query(collection(db, 'events'), where('code', '==', code));
+                const querySnapshot = await getDocs(eventQuery);
+
+                if (querySnapshot.empty) {
+                    alert("Invalid Code");
+                    return;
+                }
+
+                const eventDoc = querySnapshot.docs[0];
+                const eventData = eventDoc.data();
+
+                if (state.profile.checkedInEvents.includes(eventDoc.id)) {
+                    alert("Already checked in!");
+                    return;
+                }
+
+                const userRef = doc(db, 'users', state.user.uid);
+                await updateDoc(userRef, {
+                    points: increment(eventData.points),
+                    checkedInEvents: arrayUnion(eventDoc.id)
+                });
+
+                alert(`Checked in to ${eventData.title}! +${eventData.points} pts`);
+                toggleScanner();
+                codeInput.value = '';
+                App.navigate('home');
+            },
+            
+            seedDatabase: async () => {
+                try {
+                    const eventSnap = await getDocs(collection(db, 'events'));
+                    if (eventSnap.empty) {
+                        console.log("Seeding initial data...");
+                        const events = [
+                            { title: "General Body Meeting #1", date: "2026-02-10", time: "5:30 PM", loc: "UGLC 106", type: "GBM", points: 10, code: "GBM1" },
+                            { title: "Resume Workshop", date: "2026-02-20", time: "4:00 PM", loc: "CS Building 202", type: "Professional", points: 15, code: "LM26" },
+                            { title: "Lockheed Martin Info Session", date: "2026-02-25", time: "12:00 PM", loc: "Union East", type: "Professional", points: 20, code: "LMINFO" },
+                            { title: "SHPE Social: Bowling", date: "2026-03-05", time: "7:00 PM", loc: "Oasis Lanes", type: "Social", points: 5, code: "BOWL" }
+                        ];
+                        for (const e of events) await addDoc(collection(db, 'events'), e);
+                        
+                        const resSnap = await getDocs(collection(db, 'resources'));
+                        if(resSnap.empty) {
+                             await addDoc(collection(db, 'resources'), {
+                                category: "Career Prep", items: [{ title: "SHPE Resume Template", type: "pdf", link: "#" }, { title: "Interview Questions", type: "doc", link: "#" }]
+                            });
+                        }
+                    }
+                } catch(e) {
+                    console.error("Seeding failed (Permission Issue?): ", e);
+                }
+            }
+        };
+
+        // --- RENDERERS ---
+
+        function renderAuth(container) {
+            container.innerHTML = `
+                <div class="flex flex-col items-center justify-center min-h-[80vh] px-4 w-full max-w-sm mx-auto">
+                    <div class="mb-8 text-center">
+                        <div class="w-20 h-20 bg-utep-orange rounded-full flex items-center justify-center font-bold text-utep-blue text-4xl mx-auto mb-4 shadow-lg">S</div>
+                        <h1 class="text-3xl font-bold text-utep-blue">UTEP SHPE</h1>
+                        <p class="text-gray-500">Student Portal</p>
+                    </div>
+
+                    <div id="login-form" class="w-full bg-white p-6 rounded-2xl shadow-xl">
+                        <h2 class="text-xl font-bold mb-4 text-utep-blue">Sign In</h2>
+                        <div id="login-error" class="hidden bg-red-100 text-red-700 p-2 rounded text-xs mb-3 font-semibold"></div>
+                        <input id="login-email" type="email" placeholder="Email (miners.utep.edu)" class="auth-input">
+                        <input id="login-pass" type="password" placeholder="Password" class="auth-input">
+                        <button id="btn-login" onclick="window.tryLogin()" class="w-full bg-utep-blue text-white py-3 rounded-lg font-bold shadow hover:bg-blue-900 transition-colors">Login</button>
+                        <p class="mt-4 text-center text-sm text-gray-500">New member? <button onclick="toggleAuthMode()" class="text-utep-orange font-bold">Sign Up</button></p>
+                    </div>
+
+                    <div id="signup-form" class="w-full bg-white p-6 rounded-2xl shadow-xl hidden">
+                        <h2 class="text-xl font-bold mb-4 text-utep-blue">Create Account</h2>
+                        <div id="signup-error" class="hidden bg-red-100 text-red-700 p-2 rounded text-xs mb-3 font-semibold"></div>
+                        <input id="signup-name" type="text" placeholder="Full Name" class="auth-input">
+                        <input id="signup-email" type="email" placeholder="Email" class="auth-input">
+                        <input id="signup-pass" type="password" placeholder="Password (6+ chars)" class="auth-input">
+                        <input id="signup-code" type="text" placeholder="Officer Code (Optional)" class="auth-input text-xs tracking-widest uppercase">
+                        <button id="btn-signup" onclick="window.trySignup()" class="w-full bg-utep-orange text-white py-3 rounded-lg font-bold shadow hover:bg-orange-600 transition-colors">Sign Up</button>
+                        <p class="mt-4 text-center text-sm text-gray-500">Have an account? <button onclick="toggleAuthMode()" class="text-utep-blue font-bold">Login</button></p>
+                         <p class="mt-2 text-center text-xs text-gray-400">Officer Code for Demo: GOOP</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderAdmin(container) {
+            const memberCount = state.allMembers.length;
+            const eventCount = state.events.length;
+            container.innerHTML = `
+                <div class="p-5 pb-20 animate-fade-in">
+                    <h2 class="text-2xl font-bold text-utep-blue mb-4">Officer Dashboard</h2>
+                    <div class="grid grid-cols-2 gap-4 mb-6">
+                        <div class="admin-card text-center">
+                            <span class="text-2xl font-bold text-utep-orange block">${memberCount}</span>
+                            <span class="text-xs text-gray-500">Total Members</span>
+                        </div>
+                        <div class="admin-card text-center">
+                            <span class="text-2xl font-bold text-utep-blue block">${eventCount}</span>
+                            <span class="text-xs text-gray-500">Active Events</span>
+                        </div>
+                    </div>
+                    <div class="mb-8">
+                        <h3 class="font-bold text-gray-700 mb-3 flex justify-between items-center">
+                            Manage Members <span class="text-xs font-normal text-gray-400">Scroll for more</span>
+                        </h3>
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden max-h-60 overflow-y-auto">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-gray-50 text-gray-500 font-semibold border-b">
+                                    <tr><th class="p-3">Name</th><th class="p-3">Pts</th><th class="p-3 text-right">Action</th></tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100">
+                                    ${state.allMembers.map(m => `
+                                        <tr>
+                                            <td class="p-3 font-medium text-gray-800">${m.name}</td>
+                                            <td class="p-3 text-gray-500">${m.points}</td>
+                                            <td class="p-3 text-right">
+                                                <button onclick="app.manualAddPoints('${m.id}')" class="text-utep-blue hover:bg-blue-50 p-1 rounded"><i class="fas fa-plus-circle"></i> Add</button>
+                                            </td>
+                                        </tr>`).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="mb-6">
+                        <h3 class="font-bold text-gray-700 mb-3">Create Event</h3>
+                        <div class="admin-card space-y-3">
+                            <input id="new-event-title" type="text" placeholder="Event Title" class="w-full p-2 border rounded bg-gray-50 text-sm">
+                            <div class="grid grid-cols-2 gap-2">
+                                <input id="new-event-date" type="date" class="w-full p-2 border rounded bg-gray-50 text-sm">
+                                <input id="new-event-time" type="time" class="w-full p-2 border rounded bg-gray-50 text-sm">
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <select id="new-event-type" class="w-full p-2 border rounded bg-gray-50 text-sm">
+                                    <option value="GBM">GBM</option>
+                                    <option value="Social">Social</option>
+                                    <option value="Professional">Professional</option>
+                                    <option value="Volunteering">Volunteering</option>
+                                </select>
+                                <input id="new-event-points" type="number" placeholder="Points" value="10" class="w-full p-2 border rounded bg-gray-50 text-sm">
+                            </div>
+                            <input id="new-event-code" type="text" placeholder="CHECK-IN CODE (e.g. GBM5)" class="w-full p-2 border-2 border-dashed border-utep-blue rounded bg-blue-50 text-center font-bold uppercase tracking-widest text-sm">
+                            <button onclick="app.createEvent()" class="w-full bg-utep-blue text-white py-3 rounded-lg font-bold shadow-sm hover:bg-blue-900 mt-2 text-sm">Create Event</button>
+                        </div>
+                    </div>
+                    <h3 class="font-bold text-gray-700 mb-3">Active Events List</h3>
+                    <div class="space-y-2">
+                        ${state.events.sort((a,b)=>new Date(b.date)-new Date(a.date)).map(evt => `
+                            <div class="bg-white p-3 rounded-lg border border-gray-200 flex justify-between items-center">
+                                <div>
+                                    <p class="font-bold text-sm text-gray-800">${evt.title}</p>
+                                    <p class="text-xs text-gray-500">${evt.date} • Code: <span class="font-mono text-utep-orange font-bold">${evt.code}</span></p>
+                                </div>
+                                <button onclick="app.deleteEvent('${evt.id}')" class="text-red-400 hover:text-red-600 px-2"><i class="fas fa-trash"></i></button>
+                            </div>`).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderHome(container) {
+            const progress = Math.min(((state.profile?.points || 0) / 500) * 100, 100);
+            const nextEvent = state.events.filter(e => new Date(e.date) > new Date()).sort((a,b) => new Date(a.date) - new Date(b.date))[0] 
+                || { title: "No upcoming events", type: "N/A", points: 0, date: "--", time: "--", loc: "--" };
+
+            container.innerHTML = `
+                <div class="p-5 space-y-6 animate-fade-in">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-gray-500 text-sm">Hello, ${state.profile?.name.split(' ')[0]}!</span>
+                        <button onclick="app.handleSignOut()" class="text-xs text-red-500 font-medium hover:text-red-700">Sign Out</button>
+                    </div>
+                    <div class="bg-gradient-to-r from-utep-blue to-blue-900 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden">
+                        <div class="absolute right-[-20px] top-[-20px] opacity-10 text-9xl font-bold select-none">S</div>
+                        <div class="relative z-10">
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <h2 class="text-xl font-bold truncate pr-2 w-48">${state.profile?.name}</h2>
+                                    <p class="text-blue-200 text-xs">${state.profile?.role}</p>
+                                </div>
+                                <button onclick="editName()" class="text-xs bg-blue-800 p-1 rounded hover:bg-blue-700"><i class="fas fa-pen"></i></button>
+                            </div>
+                            <div class="flex justify-between items-end mt-4">
+                                <div><span class="text-3xl font-bold block">${state.profile?.points || 0}</span><span class="text-xs text-blue-200 uppercase tracking-wider">Total Points</span></div>
+                                <div class="text-right"><span class="bg-utep-orange text-xs font-bold px-2 py-1 rounded text-white">${(state.profile?.points || 0) >= 500 ? 'Gold' : 'Member'}</span></div>
+                            </div>
+                            <div class="mt-4"><div class="w-full bg-blue-900 rounded-full h-2"><div class="bg-utep-orange h-2 rounded-full transition-all duration-1000" style="width: ${progress}%"></div></div></div>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <button onclick="app.navigate('events')" class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center hover:bg-gray-50">
+                            <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-utep-blue mb-2"><i class="fas fa-calendar-check"></i></div>
+                            <span class="font-semibold text-sm">Attendance</span>
+                        </button>
+                        <button onclick="app.navigate('leaderboard')" class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center hover:bg-gray-50">
+                            <div class="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center text-utep-orange mb-2"><i class="fas fa-chart-line"></i></div>
+                            <span class="font-semibold text-sm">Rankings</span>
+                        </button>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-lg mb-3 flex items-center text-utep-blue"><i class="fas fa-clock text-utep-orange mr-2"></i> Next Up</h3>
+                        <div class="bg-white rounded-xl shadow-sm border-l-4 border-utep-orange p-4">
+                            <div class="flex justify-between items-start mb-2">
+                                <span class="text-xs font-bold text-utep-orange uppercase bg-orange-50 px-2 py-1 rounded">${nextEvent.type}</span>
+                                <span class="text-xs text-gray-500 font-bold">+${nextEvent.points} pts</span>
+                            </div>
+                            <h4 class="font-bold text-gray-800 mb-1">${nextEvent.title}</h4>
+                            <div class="text-sm text-gray-500 space-y-1">
+                                <div class="flex items-center"><i class="far fa-calendar w-5"></i> ${nextEvent.date}</div>
+                                <div class="flex items-center"><i class="fas fa-map-marker-alt w-5"></i> ${nextEvent.loc}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderEvents(container) {
+            const sortedEvents = [...state.events].sort((a, b) => new Date(a.date) - new Date(b.date));
+            let html = `<div class="p-5 sticky top-0 bg-gray-50 z-10 pb-2"><h2 class="text-2xl font-bold text-utep-blue mb-4">Events</h2></div><div class="px-5 pb-20 space-y-4">`;
+            sortedEvents.forEach(evt => {
+                const isPast = new Date(evt.date) < new Date();
+                const isCheckedIn = state.profile?.checkedInEvents?.includes(evt.id);
+                html += `
+                    <div class="bg-white rounded-xl p-4 shadow-sm border border-gray-100 relative ${isPast ? 'opacity-75 grayscale' : ''}">
+                        ${isCheckedIn ? '<div class="absolute top-4 right-4 text-green-500"><i class="fas fa-check-circle text-xl"></i></div>' : ''}
+                        <div class="flex items-start">
+                            <div class="bg-gray-100 rounded-lg p-3 text-center min-w-[60px] mr-4">
+                                <span class="block text-xs text-gray-500 font-bold uppercase">${new Date(evt.date).toLocaleString('default', { month: 'short' })}</span>
+                                <span class="block text-xl font-bold text-utep-blue">${new Date(evt.date).getDate()}</span>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-gray-800 leading-tight mb-1">${evt.title}</h4>
+                                <p class="text-sm text-gray-500 mb-2">${evt.time} • ${evt.loc}</p>
+                                <span class="text-xs bg-blue-50 text-utep-blue px-2 py-1 rounded font-medium">${evt.type}</span>
+                            </div>
+                        </div>
+                    </div>`;
+            });
+            container.innerHTML = html + `</div>`;
+        }
+
+        function renderLeaderboard(container) {
+             const top3 = state.leaderboard.slice(0, 3);
+            const rest = state.leaderboard.slice(3);
+            let html = `
+                 <div class="bg-utep-blue p-6 pb-12 rounded-b-[2.5rem] text-white text-center shadow-lg mb-4">
+                    <h2 class="text-2xl font-bold mb-1">Leaderboard</h2>
+                    <p class="text-blue-200 text-sm mb-6">Top Members</p>
+                    <div class="flex justify-center items-end space-x-4">
+                        ${top3[1] ? `<div class="flex flex-col items-center"><div class="w-12 h-12 rounded-full bg-gray-300 border-2 border-white flex items-center justify-center font-bold text-gray-600 mb-2">${top3[1].name.charAt(0)}</div><div class="bg-blue-800 w-12 h-16 rounded-t-lg flex justify-center pt-2"><span class="font-bold text-blue-300">2</span></div><span class="text-xs mt-1 truncate w-16 text-center">${top3[1].name}</span><span class="text-xs text-orange-400 font-bold">${top3[1].points}</span></div>` : ''}
+                        ${top3[0] ? `<div class="flex flex-col items-center"><i class="fas fa-crown text-yellow-400 mb-1"></i><div class="w-16 h-16 rounded-full bg-yellow-400 border-4 border-white flex items-center justify-center font-bold text-yellow-800 text-xl mb-2">${top3[0].name.charAt(0)}</div><div class="bg-utep-orange w-16 h-24 rounded-t-lg flex justify-center pt-2"><span class="font-bold text-white text-xl">1</span></div><span class="text-xs mt-1 truncate w-20 text-center font-bold">${top3[0].name}</span><span class="text-sm text-orange-400 font-bold">${top3[0].points}</span></div>` : ''}
+                        ${top3[2] ? `<div class="flex flex-col items-center"><div class="w-12 h-12 rounded-full bg-orange-700 border-2 border-white flex items-center justify-center font-bold text-orange-200 mb-2">${top3[2].name.charAt(0)}</div><div class="bg-blue-900 w-12 h-12 rounded-t-lg flex justify-center pt-2"><span class="font-bold text-blue-400">3</span></div><span class="text-xs mt-1 truncate w-16 text-center">${top3[2].name}</span><span class="text-xs text-orange-400 font-bold">${top3[2].points}</span></div>` : ''}
+                    </div>
+                </div>
+                <div class="px-5 pb-20 space-y-3">
+            `;
+            rest.forEach((user, index) => {
+                const isMe = user.name === state.profile?.name;
+                html += `
+                    <div class="flex items-center justify-between p-3 rounded-lg ${isMe ? 'bg-orange-50 border border-orange-200' : 'bg-white border border-gray-100'} shadow-sm">
+                        <div class="flex items-center space-x-3">
+                            <span class="text-gray-400 font-bold w-6 text-center">${index + 4}</span>
+                            <div class="w-8 h-8 rounded-full bg-gray-200 text-gray-500 flex items-center justify-center text-xs font-bold">${user.name.charAt(0)}</div>
+                            <span class="font-medium text-gray-800 ${isMe ? 'text-utep-orange' : ''}">${user.name}</span>
+                        </div>
+                        <span class="font-bold text-gray-600">${user.points} pts</span>
+                    </div>
+                `;
+            });
+            container.innerHTML = html + `</div>`;
+        }
+
+        function renderResources(container) {
+            let html = `<div class="p-5 pb-20"><h2 class="text-2xl font-bold text-utep-blue mb-6">Resources</h2>`;
+            state.resources.forEach(cat => {
+                html += `<div class="mb-6"><h3 class="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">${cat.category}</h3>
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">`;
+                cat.items.forEach((item, idx) => {
+                    let icon = item.type === 'pdf' ? 'fa-file-pdf text-red-500' : 'fa-file-alt text-blue-500';
+                    html += `<div class="flex items-center justify-between p-4 border-b border-gray-100 hover:bg-gray-50 cursor-pointer">
+                            <div class="flex items-center space-x-3"><i class="fas ${icon} w-5 text-center"></i><span class="text-gray-700 font-medium">${item.title}</span></div>
+                            <i class="fas fa-chevron-right text-gray-300 text-sm"></i></div>`;
+                });
+                html += `</div></div>`;
+            });
+            container.innerHTML = html + `</div>`;
+        }
+
+        // --- GLOBAL EXPORTS ---
+        window.app = App;
+        window.toggleScanner = function() { document.getElementById('scanner-modal').classList.toggle('hidden'); };
+        window.toggleNotifications = function() { document.getElementById('notif-dropdown').classList.toggle('hidden'); };
+        window.toggleAuthMode = function() { 
+            document.getElementById('login-form').classList.toggle('hidden');
+            document.getElementById('signup-form').classList.toggle('hidden');
+        };
+        window.tryLogin = () => App.handleLogin(document.getElementById('login-email').value, document.getElementById('login-pass').value);
+        window.trySignup = () => {
+            const email = document.getElementById('signup-email').value;
+            const pass = document.getElementById('signup-pass').value;
+            const name = document.getElementById('signup-name').value;
+            const code = document.getElementById('signup-code').value.toUpperCase();
+
+            if(!email || !pass || !name) {
+                alert("Please fill in all fields.");
+                return;
+            }
+
+            // Disable button
+            const btn = document.getElementById('btn-signup');
+            if(btn) { btn.innerText = "Creating Account..."; btn.disabled = true; }
+
+            App.handleSignup(email, pass, name, code).catch(err => {
+                 // Reset on fail
+                 if(btn) { btn.innerText = "Sign Up"; btn.disabled = false; }
+            });
+        };
+
+        window.editName = async function() {
+            const newName = prompt("Enter your name:", state.profile.name);
+            if(newName && newName.trim() !== "") {
+                await updateDoc(doc(db, 'users', state.user.uid), { name: newName });
+            }
+        }
+        
+        App.init();
+
+    </script>
+</body>
+</html>
