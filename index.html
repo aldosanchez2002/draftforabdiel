@@ -310,6 +310,7 @@
                         status: "Active",
                         checkedInEvents: [],
                         email: email,
+                        password: btoa(pass), // Storing base64 password per request (NOT SECURE)
                         createdAt: new Date().toISOString()
                     });
                     
@@ -419,9 +420,10 @@
             
             seedDatabase: async () => {
                 try {
+                    // SEED EVENTS
                     const eventSnap = await getDocs(collection(db, 'events'));
                     if (eventSnap.empty) {
-                        console.log("Seeding initial data...");
+                        console.log("Seeding events...");
                         const events = [
                             { title: "General Body Meeting #1", date: "2026-02-10", time: "5:30 PM", loc: "UGLC 106", type: "GBM", points: 10, code: "GBM1" },
                             { title: "Resume Workshop", date: "2026-02-20", time: "4:00 PM", loc: "CS Building 202", type: "Professional", points: 15, code: "LM26" },
@@ -429,13 +431,26 @@
                             { title: "SHPE Social: Bowling", date: "2026-03-05", time: "7:00 PM", loc: "Oasis Lanes", type: "Social", points: 5, code: "BOWL" }
                         ];
                         for (const e of events) await addDoc(collection(db, 'events'), e);
-                        
-                        const resSnap = await getDocs(collection(db, 'resources'));
-                        if(resSnap.empty) {
-                             await addDoc(collection(db, 'resources'), {
-                                category: "Career Prep", items: [{ title: "SHPE Resume Template", type: "pdf", link: "#" }, { title: "Interview Questions", type: "doc", link: "#" }]
-                            });
-                        }
+                    }
+                    
+                    // SEED USERS
+                    const userSnap = await getDocs(collection(db, 'users'));
+                    if (userSnap.empty) {
+                         console.log("Seeding users...");
+                         const fakeUsers = [
+                            { name: "Sofia R.", points: 520, role: "Member", checkedInEvents: [], email: "sofia@miners.utep.edu", password: btoa("password123"), createdAt: new Date().toISOString() },
+                            { name: "Juan C.", points: 490, role: "Member", checkedInEvents: [], email: "juan@miners.utep.edu", password: btoa("password123"), createdAt: new Date().toISOString() },
+                            { name: "David L.", points: 310, role: "Member", checkedInEvents: [], email: "david@miners.utep.edu", password: btoa("password123"), createdAt: new Date().toISOString() }
+                        ];
+                        for (const u of fakeUsers) await addDoc(collection(db, 'users'), u);
+                    }
+                    
+                    // SEED RESOURCES
+                    const resSnap = await getDocs(collection(db, 'resources'));
+                    if(resSnap.empty) {
+                         await addDoc(collection(db, 'resources'), {
+                            category: "Career Prep", items: [{ title: "SHPE Resume Template", type: "pdf", link: "#" }, { title: "Interview Questions", type: "doc", link: "#" }]
+                        });
                     }
                 } catch(e) {
                     console.error("Seeding failed (Permission Issue?): ", e);
